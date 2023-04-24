@@ -1,0 +1,4 @@
+vk-api~=11.9.9
+Pyrogram~=2.0.103
+nltk~=3.8.1
+Telethon~=1.27.0
