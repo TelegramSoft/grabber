@@ -1,7 +1,7 @@
 import re
 
 from nltk import word_tokenize
-from pyrogram.raw.types import MessageEntityPhone, MessageEntityUrl, MessageEntityTextUrl
+from pyrogram.enums import MessageEntityType
 from pyrogram.types import User
 from vk_api import VkApi, VkUpload
 
@@ -21,7 +21,9 @@ def get_prefix(user: User):
 
 
 def get_vk_prefix(username):
-    return f"{settings.VK_PREFIX} https://t.me/{username}\n"
+    if settings.VK_PREFIX:
+        return f"{settings.VK_PREFIX} https://t.me/{username}\n"
+    return settings.TELEGRAM_GROUP_TITLE
 
 
 def get_username(message):
@@ -89,7 +91,7 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
 async def check_for_phone(text, entities):
     if entities:
         for entity in entities:
-            if isinstance(entity, MessageEntityPhone):
+            if entity == MessageEntityType.PHONE_NUMBER:
                 return True
     else:
         if not text:
@@ -102,9 +104,11 @@ async def check_for_phone(text, entities):
 
 
 async def check_for_links(entities):
+    if not settings.LINK_FILTER:
+        return False
     if entities:
         for entity in entities:
-            if isinstance(entity, MessageEntityUrl) or isinstance(entity, MessageEntityTextUrl):
+            if entity.type == MessageEntityType.URL or entity.type == MessageEntityType.TEXT_LINK:
                 return True
     return False
 

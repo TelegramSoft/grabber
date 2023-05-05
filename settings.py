@@ -1,15 +1,17 @@
 API_ID = 14242183
 API_HASH = "52472266aee2c9881cab311830eb6dd1"
 
-GROUPS_TO_TAKE = ["testdlyapostov"]  # парсинг из какой группы или канала (в группе для приема акк админ)
+GROUPS_TO_TAKE = ["testdlyapostov", "superduperchannel213214"]  # парсинг из какой группы или канала
+# (в группе для приема акк админ)
 CHANNELS_TO_TAKE = []
-GROUPS_TO_SEND = ["superduperchannel213214"]  # если нужно перепосты в другие каналы
-BEFORE_SEND_TIMEOUT = 12
+GROUPS_TO_SEND = ["gdhjklfdd"]  # если нужно перепосты в другие каналы
+BEFORE_SEND_TIMEOUT = 5
 PHONES = [952, 901]
 PLUS_STR = ["7-", "8", "8-", "7", "7(", "8(", "8-(", "7-(", "8(-", "7(-", "8 ", "7 "]
 SPLIT_SYMBOLS = [";", "'", '"', ":", ".", ",", "?", "!", ">", "<", " ", "\n", "\t"]
 
 SESSION_NAME = "current-session"
+TELEGRAM_GROUP_TITLE = ""
 
 VK_REPOST = True
 VK_PREFIX = "Контакт:"
@@ -21,7 +23,7 @@ VK_GROUP_IDS = [208988629]
 
 PASSWORD = ""
 PHONE_FILTER = False
-LINK_FILTER = False
+LINK_FILTER = True
 STOP_WORDS_FILTER = False
 STOP_POST_FILTER = False
 MAIN_DIR_NAME = "grabber"

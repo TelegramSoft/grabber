@@ -1,223 +1,130 @@
 import asyncio
-import shutil
-from nltk import download
 
-from pyrogram.enums import ParseMode
-from pyrogram.handlers import MessageHandler
-from pyrogram.types import Message, InputMediaPhoto, InputMediaVideo
+import settings
+from pyrogram import Client, filters
+from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 
-from utils import *
-from pyrogram import Client
-from pyrogram import filters
+from utils import get_username, check_for_phone, check_for_links, stop_post_filter, vk_wall_post, get_vk_prefix, \
+    get_prefix
 
-app = Client(settings.SESSION_NAME, api_id=settings.API_ID, api_hash=settings.API_HASH)
+app = Client(settings.SESSION_NAME, settings.API_ID, settings.API_HASH)
 used_media_groups = []
 
-bad_group = False
-channel_media_group = None
-channel_media_group_text = ""
-channel_media_group_streams = {}
-channel_media_group_inputs = []
 
-
-async def on_channel_media_group(client: Client, message: Message):
-    global channel_media_group_streams, channel_media_group_text, channel_media_group, bad_group
+async def forward_media(client: Client, message: Message):
+    await asyncio.sleep(settings.BEFORE_SEND_TIMEOUT)
 
     username = get_username(message)
-    if (settings.ONLY and username not in settings.ONLY_FROM) or username in settings.NOT_SEND_MESSAGE_FROM:
-        return
+    streams = {}
+    try:
+        print(f"Новое сообщение из {message.chat.title}...")
+    except AttributeError:
+        print(f"Новое сообщение...")
 
-    # Проверка на телефон
-    if message.caption:
-        if not await check_for_phone(message.caption, message.caption_entities) and settings.PHONE_FILTER:
-            print("Сообщение без телефона...")
-            bad_group = True
-            return
-        if await check_for_links(message.caption_entities):
-            print("Сообщение с ссылками...")
-            bad_group = True
-            return
-        if not await stop_post_filter(message.caption):
-            print("Сообщение содержит запрещенные слова...")
-            bad_group = True
-            return
-
-    # Проверяем если уже другая медиа группа, то отправляем
-    if channel_media_group != message.media_group_id:
-        if not bad_group:
-            # Отправка в ВК
-            if settings.VK_REPOST and username not in settings.VK_NOT_SEND_MESSAGES_FROM:
-                vk_wall_post(message=get_vk_prefix(username) + channel_media_group_text,
-                             streams=channel_media_group_streams)
-
-            # Отправка в ТГ
-            for chat in settings.GROUPS_TO_SEND:
-                await asyncio.sleep(settings.BEFORE_SEND_TIMEOUT)
-                print(f"Отправка в '{chat}'...")
-                chat = await client.get_chat(chat)
-                await client.send_media_group(chat.id, media=channel_media_group_inputs)
-
-        await clean_cache()
-
-    if bad_group:
-        return
-    channel_media_group = message.media_group_id
-
-    # Формирование медиа группы
-    for index, msg in enumerate(await message.get_media_group()):
-        input_entity = None
-        stream = await client.download_media(msg)
-        if msg.photo:
-            channel_media_group_streams[stream] = "photo"
-            input_entity = InputMediaPhoto(stream)
-        if msg.video:
-            channel_media_group_streams[stream] = "video"
-            input_entity = InputMediaVideo(stream)
-
-        if input_entity:
-            if message.caption:
-                channel_media_group_text = check_for_bad_words(message.caption)
-                input_entity.caption = get_prefix(message.from_user) + channel_media_group_text
-                input_entity.caption_entities = message.caption_entities
-            channel_media_group_inputs.append(input_entity)
-
-
-async def on_media_group(client: Client, message: Message):
-    username = get_username(message)
-    if (settings.ONLY and username not in settings.ONLY_FROM) or username in settings.NOT_SEND_MESSAGE_FROM:
-        return
-    if message.media_group_id in used_media_groups:
-        return
+    # Получение текста сообщения и entity
+    if message.media_group_id:
+        mg = await message.get_media_group()
+        text = mg[0].caption
+        entities = mg[0].caption_entities
+    elif message.video or message.photo:
+        text = message.caption
+        entities = message.caption_entities
     else:
-        used_media_groups.append(message.media_group_id)
-    media_group = await message.get_media_group()
-    print(f"Найдена новая медиа группа из {message.chat.title}...")
+        text = message.text
+        entities = message.entities
 
-    # Проверка на телефон
-    if not await check_for_phone(message.caption, message.caption_entities) and settings.PHONE_FILTER:
-        print("Сообщение без телефона...")
-        return
-    if not await stop_post_filter(message.caption):
-        print("Сообщение содержит запрещенные слова...")
-        return
-    if await check_for_links(message.entities):
-        print("Сообщение содержит ссылки...")
-        return
-
-    # Переменные
-    media = []
-    text = ""
-    streams = {}
-
-    # Формирование медиа группы
-    for index, msg in enumerate(media_group):
-        input_entity = None
-        stream = await client.download_media(msg)
-        if msg.photo:
-            streams[stream] = "photo"
-            input_entity = InputMediaPhoto(stream)
-        if msg.video:
-            streams[stream] = "video"
-            input_entity = InputMediaVideo(stream)
-
-        if input_entity:
-            if index == 0:
-                text = check_for_bad_words(message.caption)
-                input_entity.caption = get_prefix(message.from_user) + text
-                input_entity.caption_entities = message.caption_entities
-            media.append(input_entity)
-
-    # Отправка в ВК
-    if settings.VK_REPOST and username not in settings.VK_NOT_SEND_MESSAGES_FROM:
-        vk_wall_post(message=get_vk_prefix(username) + text, streams=streams)
-
-    # Отправка в ТГ
-    for chat in settings.GROUPS_TO_SEND:
-        await asyncio.sleep(settings.BEFORE_SEND_TIMEOUT)
-        print(f"Отправка в '{chat}'...")
-        chat = await client.get_chat(chat)
-        await client.send_media_group(chat.id, media=media)
-
-    await clean_cache()
-
-
-async def on_message(client: Client, message: Message):
-    # Инициализация нужных переменных
-    text = check_for_bad_words(message.text if message.text else message.caption)
-    entities = message.entities if message.entities else message.caption_entities
-    username = get_username(message)
-    streams = {}
-
+    # Проверки и фильтры
     if (settings.ONLY and username not in settings.ONLY_FROM) or username in settings.NOT_SEND_MESSAGE_FROM:
         return
-
     # Проверка на телефон
     if not await check_for_phone(text, entities) and settings.PHONE_FILTER:
         print("Сообщение без телефона...")
         return
+    # Проверка на ссылки
     if await check_for_links(entities):
         print("Сообщение содержит ссылки...")
         return
+    # Проверка на запрешенные слова
     if not await stop_post_filter(text):
         print("Сообщение содержит запрещенные слова...")
         return
 
-    # Получение вложения как поток байтов
-    stream = None
-    if message.photo or message.video:
-        stream = await client.download_media(message)
+    # Определяем медиа в сообщении и отправка в ТГ
+    if message.media_group_id:
+        # Это медиа группа
+        media_group = await client.get_media_group(message.chat.id, message.id)
+        media_list = []
+        for media in media_group:
+            stream = await client.download_media(media)
+            if media.photo:
+                # Это фото
+                if media.caption:
+                    photo = InputMediaPhoto(media.photo.file_id, caption=get_prefix(message.from_user) + media.caption)
+                else:
+                    photo = InputMediaPhoto(media.photo.file_id, caption=media.caption)
+                media_list.append(photo)
+                streams[stream] = "photo"
+            elif media.video:
+                # Это видео
+                if media.caption:
+                    video = InputMediaVideo(media.video.file_id, caption=get_prefix(message.from_user) + media.caption)
+                else:
+                    video = InputMediaVideo(media.video.file_id, caption=media.caption)
+                media_list.append(video)
+                streams[stream] = "video"
+        for chat in settings.GROUPS_TO_SEND:
+            print(f"Отправка в {chat}")
+            await client.send_media_group(chat_id=chat, media=media_list)
+    elif message.photo:
+        # Это фото
+        for chat in settings.GROUPS_TO_SEND:
+            print(f"Отправка в {chat}")
+            if message.caption:
+                await client.send_photo(chat_id=chat, photo=message.photo.file_id,
+                                        caption=get_prefix(message.from_user) + message.caption)
+            else:
+                await client.send_photo(chat_id=chat, photo=message.photo.file_id,
+                                        caption=message.caption)
+        streams[await client.download_media(message)] = "photo"
+    elif message.video:
+        # Это видео
+        for chat in settings.GROUPS_TO_SEND:
+            print(f"Отправка в {chat}")
+            if message.caption:
+                await client.send_video(chat_id=chat, video=message.video.file_id,
+                                        caption=get_prefix(message.from_user) + message.caption)
+            else:
+                await client.send_video(chat_id=chat, video=message.video.file_id, caption=message.caption)
+        streams[await client.download_media(message)] = "video"
+    else:
+        # Это текстовое сообщение без медиа
+        for chat in settings.GROUPS_TO_SEND:
+            print(f"Отправка в {chat}")
+            await client.send_message(chat_id=chat, text=get_prefix(message.from_user) + message.text)
 
     # Отправка в ВК
     if settings.VK_REPOST and username not in settings.VK_NOT_SEND_MESSAGES_FROM:
-        if stream:
-            streams[stream] = "photo" if message.photo else "video"
-        vk_wall_post(message=get_vk_prefix(username) + text, streams=streams)
-
-    # Отправка в ТГ
-    for chat in settings.GROUPS_TO_SEND:
-        await asyncio.sleep(settings.BEFORE_SEND_TIMEOUT)
-        print(f"Отправка в '{chat}'...")
-        chat = await client.get_chat(chat)
-        if message.photo:
-            await client.send_photo(chat.id, photo=stream,
-                                    caption=get_prefix(message.from_user) + text, caption_entities=entities,
-                                    parse_mode=ParseMode.MARKDOWN)
-        elif message.video:
-            await client.send_video(chat.id, video=stream,
-                                    caption=get_prefix(message.from_user) + text, caption_entities=entities,
-                                    parse_mode=ParseMode.MARKDOWN)
+        if text:
+            vk_wall_post(message=get_vk_prefix(username) + text, streams=streams)
         else:
-            await client.send_message(chat.id, text=get_prefix(message.from_user) + text, entities=entities)
-
-    await clean_cache()
+            vk_wall_post(message=get_vk_prefix(username), streams=streams)
 
 
-async def clean_cache(directory="downloads"):
-    global channel_media_group, channel_media_group_text, channel_media_group_streams, \
-        channel_media_group_inputs, bad_group
+@app.on_message(filters.chat(settings.GROUPS_TO_TAKE))
+async def media_handler(client, message):
+    global used_media_groups
 
-    await asyncio.sleep(10)
-    if len(used_media_groups) >= 30:
-        used_media_groups.clear()
-    try:
-        shutil.rmtree(directory)
-    except (PermissionError, FileNotFoundError):
-        pass
+    if message.media_group_id:
+        if message.media_group_id in used_media_groups:
+            return
+        used_media_groups.append(message.media_group_id)
 
-    bad_group = False
-    channel_media_group = None
-    channel_media_group_text = ""
-    channel_media_group_streams = {}
-    channel_media_group_inputs = []
+    await forward_media(client, message)
+
+
+def main():
+    app.run()
 
 
 if __name__ == '__main__':
-    download("punkt")
-    print("Connecting...")
-    app.add_handler(MessageHandler(on_media_group, filters.media_group & filters.chat(settings.GROUPS_TO_TAKE)))
-    app.add_handler(MessageHandler(on_channel_media_group,
-                                   filters.media_group & filters.chat(settings.CHANNELS_TO_TAKE)))
-    app.add_handler(MessageHandler(on_message,
-                                   ~filters.media_group & filters.chat(settings.GROUPS_TO_TAKE) | filters.chat(
-                                       settings.CHANNELS_TO_TAKE)))
-    app.run()
+    main()
