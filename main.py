@@ -1,11 +1,13 @@
 import asyncio
+import shutil
 
 import settings
 from pyrogram import Client, filters
 from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 
-from utils import get_username, check_for_phone, check_for_links, stop_post_filter, vk_wall_post, get_vk_prefix, \
-    get_prefix
+from utils import (get_username, check_for_phone, check_for_links,
+                   stop_post_filter, vk_wall_post, get_vk_prefix,
+                   get_prefix)
 
 app = Client(settings.SESSION_NAME, settings.API_ID, settings.API_HASH)
 used_media_groups = []
@@ -120,6 +122,9 @@ async def media_handler(client, message):
         used_media_groups.append(message.media_group_id)
 
     await forward_media(client, message)
+
+    await asyncio.sleep(5)
+    shutil.rmtree("downloads", ignore_errors=True)
 
 
 def main():
