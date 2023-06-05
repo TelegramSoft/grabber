@@ -1,6 +1,5 @@
 import re
 from typing import List
-from pyrogram import Client
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import User, Message
 from vk_api import VkApi, VkUpload
@@ -51,10 +50,11 @@ async def get_username(message: Message, entities: List, with_filter):
 def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = None):
     if streams is None:
         streams = {}
+    api = vk.get_api()
+
     for group_id in group_ids:
         print(f"Отправка в группу в ВК с id {group_id}")
         new_attachments_list = []
-        api = vk.get_api()
 
         attachments = [stream
                        for stream, stream_type in streams.items()
@@ -80,14 +80,14 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
 
         if new_attachments_list:
             api.wall.post(
-                owner_id=-group_id,
+                owner_id=-int(group_id),
                 from_group=1,
                 message=message,
                 attachments=",".join(new_attachments_list)
             )
         else:
             api.wall.post(
-                owner_id=-group_id,
+                owner_id=-int(group_id),
                 from_group=1,
                 message=message
             )

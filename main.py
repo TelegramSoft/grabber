@@ -94,7 +94,8 @@ async def forward_media(client: Client, message: Message):
         media_group = await client.get_media_group(message.chat.id, message.id)
         media_list = []
         for media in media_group:
-            stream = await client.download_media(media)
+            stream = await client.download_media(media, in_memory=True)
+            stream.seek(0)
             if media.photo:
                 # Это фото
                 if media.caption:
@@ -126,7 +127,9 @@ async def forward_media(client: Client, message: Message):
             else:
                 await client.send_photo(chat_id=chat, photo=message.photo.file_id,
                                         caption=text)
-        streams[await client.download_media(message)] = "photo"
+        stream = await client.download_media(message, in_memory=True)
+        stream.seek(0)
+        streams[stream] = "photo"
     elif message.video:
         # Это видео
         for chat in settings.GROUPS_TO_SEND:
@@ -136,7 +139,9 @@ async def forward_media(client: Client, message: Message):
                                         caption=await get_prefix(message.from_user, entities, with_filter) + text)
             else:
                 await client.send_video(chat_id=chat, video=message.video.file_id, caption=text)
-        streams[await client.download_media(message)] = "video"
+        stream = await client.download_media(message, in_memory=True)
+        stream.seek(0)
+        streams[stream] = "video"
     else:
         # Это текстовое сообщение без медиа
         for chat in settings.GROUPS_TO_SEND:
@@ -162,9 +167,6 @@ async def media_handler(client, message):
         used_media_groups.append(message.media_group_id)
 
     await forward_media(client, message)
-
-    await asyncio.sleep(5)
-    shutil.rmtree("downloads", ignore_errors=True)
 
 
 def main():

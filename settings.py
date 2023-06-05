@@ -12,7 +12,7 @@ SPLIT_SYMBOLS = [";", "'", '"', ":", ".", ",", "?", "!", ">", "<", " ", "\n", "\
 SESSION_NAME = "current-session"
 TELEGRAM_GROUP_TITLE = ""
 
-FILTER_INTEGRATION_GROUPS = ["gdhjklfdd"]
+FILTER_INTEGRATION_GROUPS = []
 FILTER_BOT_USERNAMES = ["justeatit_bot"]
 
 REMOVE_LINKS = True
