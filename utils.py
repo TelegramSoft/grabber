@@ -1,4 +1,6 @@
 import re
+import shutil
+from io import BytesIO
 from typing import List
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import User, Message
@@ -60,6 +62,9 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
                        for stream, stream_type in streams.items()
                        if stream_type == "photo"]
         if attachments:
+            for stream in attachments:
+                stream.seek(0)
+
             uploaded = vk_upload.photo_wall(
                 photos=attachments,
                 group_id=group_id,
@@ -91,6 +96,8 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
                 from_group=1,
                 message=message
             )
+
+    shutil.rmtree("downloads", ignore_errors=True)
 
 
 async def check_for_phone(text, entities):
@@ -164,6 +171,9 @@ async def remove_links(text: str, entities: List):
 
 
 async def check_language(text):
+    if not text:
+        return True
+
     has_arabic = bool(re.search(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]", text))
     has_ukrainian = bool(re.search(r"[\u0404\u0407\u0406\u0490\u0454\u0457\u0456\u0491]", text))
 

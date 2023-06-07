@@ -12,7 +12,7 @@ SPLIT_SYMBOLS = [";", "'", '"', ":", ".", ",", "?", "!", ">", "<", " ", "\n", "\
 SESSION_NAME = "current-session"
 TELEGRAM_GROUP_TITLE = ""
 
-FILTER_INTEGRATION_GROUPS = []
+FILTER_INTEGRATION_GROUPS = ["gdhjklfdd"]
 FILTER_BOT_USERNAMES = ["justeatit_bot"]
 
 REMOVE_LINKS = True
@@ -24,7 +24,7 @@ VK_BOT_TOKEN = "vk1.a.rkhsywHz-GsvPqG69vrXHKza9k4v7Kelhco0YN7aB6kub-HzkRQyC1AxIx
                "JkqooMJqN-yxsGyfLUTml-H3z9Y9Ve2N2xTQ5IcE5pSHZkmF74qv_" \
                "4dxkubR0Bq47-YxL6gwA5cOoTlZCzVLVrtL5XysxFei2E5VJsdaQ7Zi" \
                "Al9mbvqaw1rzqB5HJ0F0CNthHYUCUzq_Sb_TXLMdH87oetog"
-VK_GROUP_IDS = [208988629]
+VK_GROUP_IDS = [208988629, 220991469]
 
 PASSWORD = ""
 

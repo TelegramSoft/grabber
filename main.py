@@ -1,5 +1,5 @@
 import asyncio
-import shutil
+import os.path
 
 import settings
 from pyrogram import Client, filters
@@ -37,7 +37,7 @@ async def forward_media(client: Client, message: Message):
 
     # Проверка на пересылку сообщений об ошибке, при использовании фильтра
     if message.chat.username in settings.FILTER_INTEGRATION_GROUPS and (
-            text.startswith("❌") or text.startswith("Реклама")):
+            text.startswith("❌") or text.lower() == "реклама"):
         return
 
     # Проверки и фильтры
@@ -88,14 +88,15 @@ async def forward_media(client: Client, message: Message):
     if message.chat.username in settings.FILTER_INTEGRATION_GROUPS:
         text = "\n".join([line for line in text.split("\n") if not line.startswith("🟢")])
 
+    text = text.strip()
+
     # Определяем медиа в сообщении и отправка в ТГ
     if message.media_group_id:
         # Это медиа группа
         media_group = await client.get_media_group(message.chat.id, message.id)
         media_list = []
+
         for media in media_group:
-            stream = await client.download_media(media, in_memory=True)
-            stream.seek(0)
             if media.photo:
                 # Это фото
                 if media.caption:
@@ -104,6 +105,9 @@ async def forward_media(client: Client, message: Message):
                 else:
                     photo = InputMediaPhoto(media.photo.file_id, caption=media.caption)
                 media_list.append(photo)
+
+                stream = await client.download_media(media, in_memory=True)
+                stream.seek(0)
                 streams[stream] = "photo"
             elif media.video:
                 # Это видео
@@ -113,6 +117,15 @@ async def forward_media(client: Client, message: Message):
                 else:
                     video = InputMediaVideo(media.video.file_id, caption=media.caption)
                 media_list.append(video)
+
+                stream = await client.download_media(media)
+
+                if os.path.exists("downloads/video"):
+                    base_renaming = "downloads/video.mp4"
+
+                    os.replace("downloads/video", base_renaming)
+                    stream = base_renaming
+
                 streams[stream] = "video"
         for chat in settings.GROUPS_TO_SEND:
             print(f"Отправка в {chat}")
@@ -139,8 +152,14 @@ async def forward_media(client: Client, message: Message):
                                         caption=await get_prefix(message.from_user, entities, with_filter) + text)
             else:
                 await client.send_video(chat_id=chat, video=message.video.file_id, caption=text)
-        stream = await client.download_media(message, in_memory=True)
-        stream.seek(0)
+        stream = await client.download_media(message)
+
+        if os.path.exists("downloads/video"):
+            base_renaming = "downloads/video.mp4"
+
+            os.replace("downloads/video", base_renaming)
+            stream = base_renaming
+
         streams[stream] = "video"
     else:
         # Это текстовое сообщение без медиа
