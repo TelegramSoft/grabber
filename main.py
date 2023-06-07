@@ -1,5 +1,5 @@
 import asyncio
-import shutil
+import os.path
 
 import settings
 from pyrogram import Client, filters
@@ -7,7 +7,7 @@ from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
 
 from utils import (get_username, check_for_phone, check_for_links,
                    stop_post_filter, vk_wall_post, get_vk_prefix,
-                   get_prefix)
+                   get_prefix, remove_links, check_language)
 
 app = Client(settings.SESSION_NAME, settings.API_ID, settings.API_HASH)
 used_media_groups = []
@@ -16,18 +16,18 @@ used_media_groups = []
 async def forward_media(client: Client, message: Message):
     await asyncio.sleep(settings.BEFORE_SEND_TIMEOUT)
 
-    username = get_username(message)
+    text = ""
+    entities = []
     streams = {}
-    try:
-        print(f"Новое сообщение из {message.chat.title}...")
-    except AttributeError:
-        print(f"Новое сообщение...")
+    with_filter = False
 
     # Получение текста сообщения и entity
     if message.media_group_id:
-        mg = await message.get_media_group()
-        text = mg[0].caption
-        entities = mg[0].caption_entities
+        for msg in await message.get_media_group():
+            if msg.caption:
+                text = msg.caption
+                entities = msg.caption_entities
+                break
     elif message.video or message.photo:
         text = message.caption
         entities = message.caption_entities
@@ -35,9 +35,36 @@ async def forward_media(client: Client, message: Message):
         text = message.text
         entities = message.entities
 
-    # Проверки и фильтры
-    if (settings.ONLY and username not in settings.ONLY_FROM) or username in settings.NOT_SEND_MESSAGE_FROM:
+    # Проверка на пересылку сообщений об ошибке, при использовании фильтра
+    if message.chat.username in settings.FILTER_INTEGRATION_GROUPS and (
+            text.startswith("❌") or text.lower() == "реклама"):
         return
+
+    # Проверки и фильтры
+    if message.chat.username in settings.FILTER_INTEGRATION_GROUPS:
+        try:
+            if message.from_user.username not in settings.FILTER_BOT_USERNAMES:
+                return
+        except AttributeError:
+            return
+        with_filter = True
+
+    username = await get_username(message, entities, with_filter)
+
+    if username in settings.NOT_SEND_MESSAGE_FROM:
+        return
+
+    if settings.ONLY:
+        if not hasattr(message.from_user, "username"):
+            return
+        if message.from_user.username not in settings.ONLY_FROM:
+            return
+
+    try:
+        print(f"Новое сообщение из {message.chat.title}...")
+    except AttributeError:
+        print(f"Новое сообщение...")
+
     # Проверка на телефон
     if not await check_for_phone(text, entities) and settings.PHONE_FILTER:
         print("Сообщение без телефона...")
@@ -50,29 +77,55 @@ async def forward_media(client: Client, message: Message):
     if not await stop_post_filter(text):
         print("Сообщение содержит запрещенные слова...")
         return
+    if not await check_language(text):
+        print("Сообщение на запрещенном языке...")
+        return
+
+    # Удаляем ссылки из сообщения
+    text = await remove_links(text, entities)
+
+    # Если с фильтром - убираем строку 'пост от пользователя'
+    if message.chat.username in settings.FILTER_INTEGRATION_GROUPS:
+        text = "\n".join([line for line in text.split("\n") if not line.startswith("🟢")])
+
+    text = text.strip()
 
     # Определяем медиа в сообщении и отправка в ТГ
     if message.media_group_id:
         # Это медиа группа
         media_group = await client.get_media_group(message.chat.id, message.id)
         media_list = []
+
         for media in media_group:
-            stream = await client.download_media(media)
             if media.photo:
                 # Это фото
                 if media.caption:
-                    photo = InputMediaPhoto(media.photo.file_id, caption=get_prefix(message.from_user) + media.caption)
+                    photo = InputMediaPhoto(media.photo.file_id,
+                                            caption=await get_prefix(message.from_user, entities, with_filter) + text)
                 else:
                     photo = InputMediaPhoto(media.photo.file_id, caption=media.caption)
                 media_list.append(photo)
+
+                stream = await client.download_media(media, in_memory=True)
+                stream.seek(0)
                 streams[stream] = "photo"
             elif media.video:
                 # Это видео
                 if media.caption:
-                    video = InputMediaVideo(media.video.file_id, caption=get_prefix(message.from_user) + media.caption)
+                    video = InputMediaVideo(media.video.file_id,
+                                            caption=await get_prefix(message.from_user, entities, with_filter) + text)
                 else:
                     video = InputMediaVideo(media.video.file_id, caption=media.caption)
                 media_list.append(video)
+
+                stream = await client.download_media(media)
+
+                if os.path.exists("downloads/video"):
+                    base_renaming = "downloads/video.mp4"
+
+                    os.replace("downloads/video", base_renaming)
+                    stream = base_renaming
+
                 streams[stream] = "video"
         for chat in settings.GROUPS_TO_SEND:
             print(f"Отправка в {chat}")
@@ -83,26 +136,37 @@ async def forward_media(client: Client, message: Message):
             print(f"Отправка в {chat}")
             if message.caption:
                 await client.send_photo(chat_id=chat, photo=message.photo.file_id,
-                                        caption=get_prefix(message.from_user) + message.caption)
+                                        caption=await get_prefix(message.from_user, entities, with_filter) + text)
             else:
                 await client.send_photo(chat_id=chat, photo=message.photo.file_id,
-                                        caption=message.caption)
-        streams[await client.download_media(message)] = "photo"
+                                        caption=text)
+        stream = await client.download_media(message, in_memory=True)
+        stream.seek(0)
+        streams[stream] = "photo"
     elif message.video:
         # Это видео
         for chat in settings.GROUPS_TO_SEND:
             print(f"Отправка в {chat}")
             if message.caption:
                 await client.send_video(chat_id=chat, video=message.video.file_id,
-                                        caption=get_prefix(message.from_user) + message.caption)
+                                        caption=await get_prefix(message.from_user, entities, with_filter) + text)
             else:
-                await client.send_video(chat_id=chat, video=message.video.file_id, caption=message.caption)
-        streams[await client.download_media(message)] = "video"
+                await client.send_video(chat_id=chat, video=message.video.file_id, caption=text)
+        stream = await client.download_media(message)
+
+        if os.path.exists("downloads/video"):
+            base_renaming = "downloads/video.mp4"
+
+            os.replace("downloads/video", base_renaming)
+            stream = base_renaming
+
+        streams[stream] = "video"
     else:
         # Это текстовое сообщение без медиа
         for chat in settings.GROUPS_TO_SEND:
             print(f"Отправка в {chat}")
-            await client.send_message(chat_id=chat, text=get_prefix(message.from_user) + message.text)
+            await client.send_message(chat_id=chat,
+                                      text=await get_prefix(message.from_user, entities, with_filter) + text)
 
     # Отправка в ВК
     if settings.VK_REPOST and username not in settings.VK_NOT_SEND_MESSAGES_FROM:
@@ -122,9 +186,6 @@ async def media_handler(client, message):
         used_media_groups.append(message.media_group_id)
 
     await forward_media(client, message)
-
-    await asyncio.sleep(5)
-    shutil.rmtree("downloads", ignore_errors=True)
 
 
 def main():

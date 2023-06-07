@@ -1,8 +1,9 @@
 import re
-
-from nltk import word_tokenize
+import shutil
+from io import BytesIO
+from typing import List
 from pyrogram.enums import MessageEntityType
-from pyrogram.types import User
+from pyrogram.types import User, Message
 from vk_api import VkApi, VkUpload
 
 import settings
@@ -11,7 +12,18 @@ vk = VkApi(token=settings.VK_BOT_TOKEN)
 vk_upload = VkUpload(vk)
 
 
-def get_prefix(user: User):
+async def get_prefix(user: User, entities: List, with_filter: bool):
+    if not with_filter:
+        return generate_prefix_from_user(user)
+
+    if not entities:
+        return ""
+    for entity in entities:
+        if entity.type == MessageEntityType.TEXT_MENTION:
+            return generate_prefix_from_user(entity.user)
+
+
+def generate_prefix_from_user(user: User):
     if not user:
         return ""
     prefix = f"[{user.first_name}"
@@ -26,7 +38,11 @@ def get_vk_prefix(username):
     return settings.TELEGRAM_GROUP_TITLE
 
 
-def get_username(message):
+async def get_username(message: Message, entities: List, with_filter):
+    if with_filter and entities:
+        for entity in entities:
+            if entity.type == MessageEntityType.TEXT_MENTION:
+                return entity.user.username if entity.user.username else ""
     try:
         return message.from_user.username
     except AttributeError:
@@ -34,23 +50,21 @@ def get_username(message):
 
 
 def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = None):
-    # if attachments_dir is None:
-    #     attachments_dir = []
     if streams is None:
         streams = {}
+    api = vk.get_api()
+
     for group_id in group_ids:
         print(f"Отправка в группу в ВК с id {group_id}")
         new_attachments_list = []
-        api = vk.get_api()
 
-        # attachments = [os.path.join(attachments_dir, file)
-        #                for file in os.listdir(attachments_dir)
-        #                if os.path.isfile(os.path.join(attachments_dir, file)) and (
-        #                    file.endswith(".jpg") or file.endswith(".png") or file.endswith(".jpeg"))]
         attachments = [stream
                        for stream, stream_type in streams.items()
                        if stream_type == "photo"]
         if attachments:
+            for stream in attachments:
+                stream.seek(0)
+
             uploaded = vk_upload.photo_wall(
                 photos=attachments,
                 group_id=group_id,
@@ -58,10 +72,6 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
             for upload in uploaded:
                 new_attachments_list.append(f"photo{upload['owner_id']}_{upload['id']}")
 
-        # attachments = [os.path.join(attachments_dir, file)
-        #                for file in os.listdir(attachments_dir)
-        #                if os.path.isfile(os.path.join(attachments_dir, file)) and (
-        #                        file.endswith(".mp4") or file.endswith(".MOV"))]
         attachments = [stream
                        for stream, stream_type in streams.items()
                        if stream_type == "video"]
@@ -75,17 +85,19 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
 
         if new_attachments_list:
             api.wall.post(
-                owner_id=-group_id,
+                owner_id=-int(group_id),
                 from_group=1,
                 message=message,
                 attachments=",".join(new_attachments_list)
             )
         else:
             api.wall.post(
-                owner_id=-group_id,
+                owner_id=-int(group_id),
                 from_group=1,
                 message=message
             )
+
+    shutil.rmtree("downloads", ignore_errors=True)
 
 
 async def check_for_phone(text, entities):
@@ -117,8 +129,10 @@ def check_for_bad_words(text) -> str:
     if not settings.STOP_WORDS_FILTER:
         return text
 
-    split_words = word_tokenize(str(text), language="russian")
-    return " ".join([word for word in split_words if word.lower() not in settings.STOP_WORDS])
+    # Удаляем указанные слова из текста сообщения
+    new_text = re.sub(r"\b(?:{})\b".format("|".join(settings.STOP_WORDS)), '', text, flags=re.IGNORECASE)
+
+    return new_text
 
 
 async def stop_post_filter(pre_text):
@@ -130,3 +144,37 @@ async def stop_post_filter(pre_text):
         if word.lower() in settings.STOP_POST_WORDS:
             return False
     return True
+
+
+async def remove_links(text: str, entities: List):
+    if not settings.REMOVE_LINKS or not entities:
+        return text
+
+    # Удаляем ссылки из текста сообщения
+    for entity in entities:
+        if entity.type == MessageEntityType.TEXT_LINK:
+            # Проверяем наличие ссылки в белом списке
+            if entity.url in settings.LINKS_WHITELIST:
+                continue
+        elif entity.type == MessageEntityType.URL:
+            # Получаем ссылку и проверяем есть ли она в белом списке
+            link = text[entity.offset:][:entity.offset + entity.length].strip()
+            if link in settings.LINKS_WHITELIST:
+                continue
+        else:
+            continue
+
+        # Вырезаем ссылки
+        text = text[:entity.offset] + text[entity.offset + entity.length:]
+
+    return text
+
+
+async def check_language(text):
+    if not text:
+        return True
+
+    has_arabic = bool(re.search(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]", text))
+    has_ukrainian = bool(re.search(r"[\u0404\u0407\u0406\u0490\u0454\u0457\u0456\u0491]", text))
+
+    return not has_ukrainian or has_arabic
