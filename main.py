@@ -3,7 +3,7 @@ import os.path
 
 import settings
 from pyrogram import Client, filters
-from pyrogram.types import InputMediaPhoto, InputMediaVideo, Message
+from pyrogram.types import InputMediaPhoto, InputMediaVideo, InputMediaDocument, Message
 
 from utils import (get_username, check_for_phone, check_for_links,
                    stop_post_filter, vk_wall_post, get_vk_prefix,
@@ -28,10 +28,10 @@ async def forward_media(client: Client, message: Message):
                 text = msg.caption
                 entities = msg.caption_entities
                 break
-    elif message.video or message.photo:
+    elif message.video or message.photo or message.document:
         text = message.caption
         entities = message.caption_entities
-    else:
+    elif message.text:
         text = message.text
         entities = message.entities
 
@@ -118,15 +118,22 @@ async def forward_media(client: Client, message: Message):
                     video = InputMediaVideo(media.video.file_id, caption=media.caption)
                 media_list.append(video)
 
-                stream = await client.download_media(media)
-
-                if os.path.exists("downloads/video"):
-                    base_renaming = "downloads/video.mp4"
-
-                    os.replace("downloads/video", base_renaming)
-                    stream = base_renaming
-
+                stream = await client.download_media(media, in_memory=True)
+                stream.seek(0)
                 streams[stream] = "video"
+            elif media.document:
+                # Это документ
+                if media.caption:
+                    doc = InputMediaDocument(media.document.file_id,
+                                             caption=await get_prefix(message.from_user, entities,
+                                                                      with_filter) + text)
+                else:
+                    doc = InputMediaDocument(media.document.file_id, caption=media.caption)
+                media_list.append(doc)
+
+                stream = await client.download_media(media, in_memory=True)
+                stream.seek(0)
+                streams[stream] = "doc"
         for chat in settings.GROUPS_TO_SEND:
             print(f"Отправка в {chat}")
             await client.send_media_group(chat_id=chat, media=media_list)
@@ -152,15 +159,23 @@ async def forward_media(client: Client, message: Message):
                                         caption=await get_prefix(message.from_user, entities, with_filter) + text)
             else:
                 await client.send_video(chat_id=chat, video=message.video.file_id, caption=text)
-        stream = await client.download_media(message)
 
-        if os.path.exists("downloads/video"):
-            base_renaming = "downloads/video.mp4"
-
-            os.replace("downloads/video", base_renaming)
-            stream = base_renaming
-
+        stream = await client.download_media(message, in_memory=True)
+        stream.seek(0)
         streams[stream] = "video"
+    elif message.document:
+        # Это документ
+        for chat in settings.GROUPS_TO_SEND:
+            print(f"Отправка в {chat}")
+            if message.caption:
+                await client.send_document(chat_id=chat, document=message.document.file_id,
+                                           caption=await get_prefix(message.from_user, entities, with_filter) + text)
+            else:
+                await client.send_document(chat_id=chat, document=message.document.file_id, caption=text)
+
+        stream = await client.download_media(message, in_memory=True)
+        stream.seek(0)
+        streams[stream] = "doc"
     else:
         # Это текстовое сообщение без медиа
         for chat in settings.GROUPS_TO_SEND:

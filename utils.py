@@ -1,6 +1,4 @@
 import re
-import shutil
-from io import BytesIO
 from typing import List
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import User, Message
@@ -33,7 +31,7 @@ def generate_prefix_from_user(user: User):
 
 
 def get_vk_prefix(username):
-    if settings.VK_PREFIX:
+    if settings.VK_PREFIX and username:
         return f"{settings.VK_PREFIX} https://t.me/{username}\n"
     return settings.TELEGRAM_GROUP_TITLE
 
@@ -76,12 +74,31 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
                        for stream, stream_type in streams.items()
                        if stream_type == "video"]
         if attachments:
+            for stream in attachments:
+                stream.seek(0)
+
             for attach in attachments:
                 uploaded = vk_upload.video(
                     video_file=attach,
                     group_id=group_id,
                 )
                 new_attachments_list.append(f"video{uploaded['owner_id']}_{uploaded['video_id']}")
+
+        attachments = [
+            stream for stream, stream_type in streams.items()
+            if stream_type == "doc"
+        ]
+
+        if attachments:
+            for stream in attachments:
+                stream.seek(0)
+
+            for attach in attachments:
+                uploaded = vk_upload.document(
+                    doc=attach,
+                    group_id=group_id,
+                )
+                new_attachments_list.append(f"doc{uploaded['owner_id']}_{uploaded['id']}")
 
         if new_attachments_list:
             api.wall.post(
@@ -96,8 +113,6 @@ def vk_wall_post(group_ids=settings.VK_GROUP_IDS, message=None, streams: dict = 
                 from_group=1,
                 message=message
             )
-
-    shutil.rmtree("downloads", ignore_errors=True)
 
 
 async def check_for_phone(text, entities):
