@@ -20,11 +20,7 @@ LINKS_WHITELIST = ["https://t.me/zerosixed", "https://t.me/ss433477"]
 
 VK_REPOST = True
 VK_PREFIX = "Контакт:"
-VK_BOT_TOKEN1 = "vk1.a.rkhsywHz-GsvPqG69vrXHKza9k4v7Kelhco0YN7aB6kub-HzkRQyC1AxIx" \
-                "JkqooMJqN-yxsGyfLUTml-H3z9Y9Ve2N2xTQ5IcE5pSHZkmF74qv_" \
-                "4dxkubR0Bq47-YxL6gwA5cOoTlZCzVLVrtL5XysxFei2E5VJsdaQ7Zi" \
-                "Al9mbvqaw1rzqB5HJ0F0CNthHYUCUzq_Sb_TXLMdH87oetog"
-VK_BOT_TOKEN = "vk1.a.ilZhp4yEvRZDk7Ub0r4Mlsv0muqGOoIHLvpmpfnopy6n6ZZo9hnQwglpStlzH7XORv36hPpZhkYwLRCLps8ATvZTnzhxKQKA7bB3KjhHAz92PLfWg_9_GsZRYnwjAltlApdhxstk8ZHoAlI3WsyXKJpQLV5GWjWmSG88tboZtX5SfMV2k-gUVb1aMwZ84nplEfFOY_aChbVtbodTBm7fgQ"
+VK_BOT_TOKEN = ""
 VK_GROUP_IDS = [208988629, 220991469]
 PASSWORD = ""
 
